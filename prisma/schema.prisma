@@ -1,0 +1,545 @@
+generator client {
+  provider                    = "prisma-client-py"
+  recursive_type_depth        = 5
+  enable_experimental_decimal = true
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum KycStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum AccountType {
+  SAVINGS
+  CURRENT
+}
+
+enum TransactionStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+enum TransactionKind {
+  DEPOSIT
+  WITHDRAW
+  TRANSFER
+  CARD_CAPTURE
+}
+
+enum LoanStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum RecurringFrequency {
+  WEEKLY
+  MONTHLY
+}
+
+enum CardStatus {
+  ACTIVE
+  CANCELLED
+}
+
+enum LedgerAccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  EXPENSE
+}
+
+enum LedgerSide {
+  DEBIT
+  CREDIT
+}
+
+enum PaymentRail {
+  ACH_SIM
+  WIRE_SIM
+  RTP_SIM
+  INTERNAL
+}
+
+enum PaymentInstructionStatus {
+  PENDING
+  SUBMITTED
+  SETTLED
+  RETURNED
+  FAILED
+}
+
+enum CardAuthorizationStatus {
+  AUTHORIZED
+  CAPTURED
+  REVERSED
+}
+
+enum LoanInstallmentStatus {
+  PENDING
+  PAID
+  OVERDUE
+}
+
+enum PendingAdminActionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum SupportCaseStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum ScreeningResultStatus {
+  CLEAR
+  REVIEW
+  BLOCKED
+}
+
+enum DataExportStatus {
+  REQUESTED
+  READY
+  FAILED
+}
+
+enum KybStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  password_hash String
+  full_name     String
+  phone         String?
+  role          Role      @default(USER)
+  kyc_status    KycStatus @default(PENDING)
+  is_active     Boolean   @default(true)
+  notify_email  Boolean   @default(true)
+  notify_push   Boolean   @default(true)
+  daily_transfer_max Decimal? @db.Decimal(18, 2)
+  daily_atm_max        Decimal? @db.Decimal(18, 2)
+  mfa_totp_secret   String?
+  mfa_enabled       Boolean   @default(false)
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+
+  accounts               Account[]
+  loans                  Loan[]
+  audit_logs             AuditLog[]
+  refresh_tokens         RefreshToken[]
+  password_reset_tokens  PasswordResetToken[]
+  recurring_payments     RecurringPayment[]
+  beneficiaries          Beneficiary[]
+  cards                  Card[]
+  payment_instructions   PaymentInstruction[]
+  support_cases          SupportCase[]
+  business_profiles      BusinessProfile[]
+  screening_checks       ScreeningCheck[]
+  data_export_requests   DataExportRequest[]
+  pending_actions_maker  PendingAdminAction[] @relation("PendingMaker")
+  pending_actions_checker PendingAdminAction[] @relation("PendingChecker")
+
+  @@index([email])
+}
+
+model RefreshToken {
+  id         String   @id @default(uuid())
+  user_id    String
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  token_hash String   @unique
+  expires_at DateTime
+  user_agent String?
+  ip_address String?
+  created_at DateTime @default(now())
+
+  @@index([user_id])
+}
+
+model PasswordResetToken {
+  id         String    @id @default(uuid())
+  user_id    String
+  user       User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  token_hash String    @unique
+  expires_at DateTime
+  used_at    DateTime?
+
+  @@index([user_id])
+}
+
+model Account {
+  id         String      @id @default(uuid())
+  user_id    String
+  user       User        @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  type       AccountType
+  balance    Decimal     @default(0) @db.Decimal(18, 2)
+  currency   String      @default("USD")
+  is_active  Boolean     @default(true)
+  nickname   String?
+  is_frozen  Boolean     @default(false)
+  hold_balance Decimal   @default(0) @db.Decimal(18, 2)
+  created_at DateTime    @default(now())
+  updated_at DateTime    @updatedAt
+
+  outgoing_transactions Transaction[]      @relation("FromAccount")
+  incoming_transactions Transaction[]      @relation("ToAccount")
+  recurring_from        RecurringPayment[]   @relation("RecurringFrom")
+  recurring_to          RecurringPayment[]   @relation("RecurringTo")
+  linked_beneficiaries  Beneficiary[]      @relation("BeneficiaryTarget")
+  payment_instructions  PaymentInstruction[]
+  account_holds         AccountHold[]
+  journal_lines         JournalLine[]
+
+  @@index([user_id])
+  @@index([user_id, type])
+}
+
+model Transaction {
+  id               String              @id @default(uuid())
+  idempotency_key  String              @unique
+  kind             TransactionKind
+  status           TransactionStatus   @default(PENDING)
+  amount           Decimal             @db.Decimal(18, 2)
+  from_account_id  String?
+  from_account     Account?            @relation("FromAccount", fields: [from_account_id], references: [id])
+  to_account_id    String?
+  to_account       Account?            @relation("ToAccount", fields: [to_account_id], references: [id])
+  description      String?
+  client_reference String?
+  failure_reason   String?
+  created_at       DateTime            @default(now())
+  updated_at       DateTime            @updatedAt
+
+  journal_entry    JournalEntry?
+
+  @@index([from_account_id])
+  @@index([to_account_id])
+  @@index([status])
+  @@index([created_at])
+}
+
+model Loan {
+  id              String     @id @default(uuid())
+  user_id         String
+  user            User       @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  principal       Decimal    @db.Decimal(18, 2)
+  annual_rate_pct Decimal    @db.Decimal(8, 4)
+  tenure_months   Int
+  emi             Decimal    @db.Decimal(18, 2)
+  status          LoanStatus @default(PENDING)
+  purpose         String?
+  created_at      DateTime   @default(now())
+  updated_at      DateTime   @updatedAt
+
+  installments    LoanInstallment[]
+
+  @@index([user_id])
+  @@index([status])
+}
+
+model LoanProduct {
+  id                String  @id @default(uuid())
+  name              String
+  min_principal     Decimal @db.Decimal(18, 2)
+  max_principal     Decimal @db.Decimal(18, 2)
+  min_tenure_months Int
+  max_tenure_months Int
+  annual_rate_pct   Decimal @db.Decimal(8, 4)
+  created_at        DateTime @default(now())
+}
+
+model RecurringPayment {
+  id              String             @id @default(uuid())
+  user_id         String
+  user            User               @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  from_account_id String
+  from_account    Account            @relation("RecurringFrom", fields: [from_account_id], references: [id])
+  to_account_id   String
+  to_account      Account            @relation("RecurringTo", fields: [to_account_id], references: [id])
+  amount          Decimal            @db.Decimal(18, 2)
+  frequency       RecurringFrequency
+  next_run_at     DateTime
+  active          Boolean            @default(true)
+  description     String?
+  created_at      DateTime           @default(now())
+  updated_at      DateTime           @updatedAt
+
+  @@index([user_id])
+  @@index([next_run_at])
+}
+
+model Beneficiary {
+  id                     String   @id @default(uuid())
+  user_id                String
+  user                   User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  display_name           String
+  beneficiary_account_id String
+  beneficiary_account    Account  @relation("BeneficiaryTarget", fields: [beneficiary_account_id], references: [id])
+  created_at             DateTime @default(now())
+
+  @@index([user_id])
+}
+
+model Card {
+  id         String     @id @default(uuid())
+  user_id    String
+  user       User       @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  label      String
+  last4      String
+  status     CardStatus @default(ACTIVE)
+  is_frozen  Boolean    @default(false)
+  created_at DateTime   @default(now())
+  updated_at DateTime   @updatedAt
+
+  authorizations CardAuthorization[]
+
+  @@index([user_id])
+}
+
+model LedgerAccount {
+  id         String            @id @default(uuid())
+  code       String            @unique
+  name       String
+  type       LedgerAccountType
+  created_at DateTime          @default(now())
+  updated_at DateTime          @updatedAt
+
+  lines JournalLine[]
+}
+
+model JournalEntry {
+  id                 String   @id @default(uuid())
+  transaction_id     String?  @unique
+  transaction        Transaction? @relation(fields: [transaction_id], references: [id], onDelete: SetNull)
+  memo               String?
+  currency           String   @default("USD")
+  posted_at          DateTime @default(now())
+  created_at         DateTime @default(now())
+
+  lines JournalLine[]
+
+  @@index([posted_at])
+}
+
+model JournalLine {
+  id                  String       @id @default(uuid())
+  journal_entry_id    String
+  journal_entry       JournalEntry @relation(fields: [journal_entry_id], references: [id], onDelete: Cascade)
+  ledger_account_id   String
+  ledger_account      LedgerAccount @relation(fields: [ledger_account_id], references: [id])
+  side                LedgerSide
+  amount              Decimal      @db.Decimal(18, 2)
+  internal_account_id String?
+  internal_account    Account?     @relation(fields: [internal_account_id], references: [id], onDelete: SetNull)
+
+  @@index([journal_entry_id])
+  @@index([ledger_account_id])
+}
+
+model PaymentInstruction {
+  id                String                   @id @default(uuid())
+  user_id           String
+  user              User                     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  from_account_id   String
+  from_account      Account                  @relation(fields: [from_account_id], references: [id])
+  amount            Decimal                  @db.Decimal(18, 2)
+  rail              PaymentRail
+  counterparty      Json?
+  status            PaymentInstructionStatus @default(PENDING)
+  idempotency_key   String                   @unique
+  reference         String?
+  failure_reason    String?
+  created_at        DateTime                 @default(now())
+  updated_at        DateTime                 @updatedAt
+
+  @@index([user_id])
+  @@index([status])
+}
+
+model CardAuthorization {
+  id              String                  @id @default(uuid())
+  card_id         String
+  card            Card                    @relation(fields: [card_id], references: [id], onDelete: Cascade)
+  amount          Decimal                 @db.Decimal(18, 2)
+  merchant_name   String?
+  status          CardAuthorizationStatus @default(AUTHORIZED)
+  idempotency_key String                  @unique
+  capture_txn_id  String?
+  created_at      DateTime                @default(now())
+  updated_at      DateTime                @updatedAt
+
+  @@index([card_id])
+  @@index([status])
+}
+
+model LoanInstallment {
+  id               String                @id @default(uuid())
+  loan_id          String
+  loan             Loan                  @relation(fields: [loan_id], references: [id], onDelete: Cascade)
+  sequence         Int
+  due_date         DateTime
+  amount_due       Decimal               @db.Decimal(18, 2)
+  principal_part   Decimal               @db.Decimal(18, 2)
+  interest_part    Decimal               @db.Decimal(18, 2)
+  status           LoanInstallmentStatus @default(PENDING)
+  paid_at          DateTime?
+
+  @@unique([loan_id, sequence])
+  @@index([loan_id])
+  @@index([due_date])
+}
+
+model AccountHold {
+  id          String    @id @default(uuid())
+  account_id  String
+  account     Account   @relation(fields: [account_id], references: [id], onDelete: Cascade)
+  amount      Decimal   @db.Decimal(18, 2)
+  reason      String
+  released_at DateTime?
+  created_at  DateTime  @default(now())
+
+  @@index([account_id])
+}
+
+model PendingAdminAction {
+  id          String                   @id @default(uuid())
+  action_type String
+  payload     Json
+  status      PendingAdminActionStatus @default(PENDING)
+  maker_id    String
+  maker       User                     @relation("PendingMaker", fields: [maker_id], references: [id])
+  checker_id  String?
+  checker     User?                    @relation("PendingChecker", fields: [checker_id], references: [id])
+  resolution_note String?
+  created_at  DateTime                 @default(now())
+  resolved_at DateTime?
+
+  @@index([status])
+}
+
+model SupportCase {
+  id         String            @id @default(uuid())
+  user_id    String
+  user       User              @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  subject    String
+  body       String?
+  status     SupportCaseStatus @default(OPEN)
+  priority   Int               @default(0)
+  created_at DateTime          @default(now())
+  updated_at DateTime          @updatedAt
+
+  @@index([user_id])
+  @@index([status])
+}
+
+model BusinessProfile {
+  id                  String    @id @default(uuid())
+  user_id             String    @unique
+  user                User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  company_name        String
+  registration_number String?
+  country             String    @default("US")
+  status              KybStatus @default(PENDING)
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @updatedAt
+}
+
+model ScreeningCheck {
+  id             String                @id @default(uuid())
+  user_id        String
+  user           User                  @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  pep_hit        Boolean               @default(false)
+  sanctions_hit  Boolean               @default(false)
+  status         ScreeningResultStatus @default(CLEAR)
+  notes          String?
+  created_at     DateTime              @default(now())
+
+  @@index([user_id])
+}
+
+model DataExportRequest {
+  id          String           @id @default(uuid())
+  user_id     String
+  user        User             @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  status      DataExportStatus @default(REQUESTED)
+  result_json Json?
+  error_message String?
+  created_at  DateTime         @default(now())
+  completed_at DateTime?
+
+  @@index([user_id])
+  @@index([status])
+}
+
+model WebhookDelivery {
+  id                 String   @id @default(uuid())
+  webhook_endpoint_id String
+  webhook_endpoint   WebhookEndpoint @relation(fields: [webhook_endpoint_id], references: [id], onDelete: Cascade)
+  event_type         String
+  body               Json
+  status             String   @default("PENDING")
+  attempt_count      Int      @default(0)
+  last_error         String?
+  next_attempt_at    DateTime?
+  created_at         DateTime @default(now())
+  updated_at         DateTime @updatedAt
+
+  @@index([status])
+  @@index([webhook_endpoint_id])
+}
+
+model WebhookEndpoint {
+  id          String   @id @default(uuid())
+  url         String
+  secret      String?
+  events      Json?
+  is_active   Boolean  @default(true)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  deliveries WebhookDelivery[]
+}
+
+model ApiKey {
+  id         String   @id @default(uuid())
+  name       String
+  key_hash   String   @unique
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now())
+  last_used_at DateTime?
+}
+
+model AuditLog {
+  id         String    @id @default(uuid())
+  user_id    String?
+  user       User?     @relation(fields: [user_id], references: [id], onDelete: SetNull)
+  action     String
+  resource   String?
+  details    Json?
+  ip_address String?
+  read_at    DateTime?
+  created_at DateTime  @default(now())
+
+  @@index([user_id])
+  @@index([action])
+  @@index([created_at])
+}

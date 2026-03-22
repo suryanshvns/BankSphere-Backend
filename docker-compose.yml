@@ -1,0 +1,35 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: banksphere
+      POSTGRES_PASSWORD: banksphere
+      POSTGRES_DB: banksphere
+    ports:
+      - "5433:5432"
+    volumes:
+      - banksphere_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U banksphere -d banksphere"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://banksphere:banksphere@db:5432/banksphere
+      SECRET_KEY: docker-dev-secret-change-in-production-min-32-chars
+      ACCESS_TOKEN_EXPIRE_MINUTES: "60"
+      ENVIRONMENT: development
+      LOG_LEVEL: INFO
+    depends_on:
+      db:
+        condition: service_healthy
+    command: >
+      sh -c "prisma migrate deploy && python scripts/seed.py && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+volumes:
+  banksphere_pg:

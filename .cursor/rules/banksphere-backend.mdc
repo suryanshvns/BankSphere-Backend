@@ -1,0 +1,100 @@
+---
+description: FastAPI backend coding standards and architecture rules
+globs: ["backend/**/*.py"]
+alwaysApply: false
+---
+
+# 🐍 Python FastAPI Backend Rules
+
+## 🔧 Core Principles
+- Follow PEP8 strictly (formatting, naming, spacing).
+- Use Python 3.12+ features where appropriate.
+- Prefer readability over cleverness.
+- Follow DRY and SOLID principles.
+- Use type hints everywhere (no untyped functions).
+
+## 📁 Project Structure
+- Use modular architecture:
+  - app/
+    - api/
+    - services/
+    - repositories/
+    - models/
+    - schemas/
+    - core/
+    - utils/
+- Separate concerns strictly:
+  - API → request/response
+  - service → business logic
+  - repository → DB access
+
+## ⚙️ FastAPI Standards
+- Use dependency injection (`Depends`) for services.
+- Always use Pydantic models for request/response validation.
+- Never expose raw ORM models in API responses.
+- Use async/await for all I/O operations.
+
+## 🧾 Naming Conventions
+- snake_case for variables/functions
+- PascalCase for classes
+- UPPER_CASE for constants
+- Boolean variables must start with: is_, has_, can_
+
+## 🚨 Error Handling
+- Use centralized exception handling (custom exceptions).
+- Never expose internal errors to clients.
+- Validate inputs at API boundary.
+- Use early returns for validation errors.
+
+## 🔐 Security
+- Always validate user input.
+- Use JWT/OAuth2 for authentication.
+- Never hardcode secrets (use env variables).
+- Hash passwords with bcrypt or argon2.
+- Use HTTPS for all external calls.
+
+## 🗄️ Database
+- Use SQLAlchemy (async) or Prisma client.
+- Use repository pattern for DB operations.
+- Avoid raw queries unless necessary.
+- Always handle transactions properly.
+
+## 🧪 Testing
+- Use pytest.
+- Write unit tests for services.
+- Mock external dependencies.
+- Minimum 80% coverage.
+
+## 📊 Logging & Monitoring
+- Use structured logging (loguru or standard logging).
+- Log errors with context.
+- Never log sensitive data.
+
+## ⚡ Performance
+- Use async APIs.
+- Avoid blocking calls.
+- Cache frequently accessed data (Redis).
+
+## 🧹 Code Style
+- Max function length: 30 lines.
+- Max file length: 300 lines.
+- Use early returns instead of nested conditions.
+- Avoid deep nesting (>3 levels).
+
+## 📦 API Design
+- RESTful conventions:
+  - GET /users
+  - POST /users
+  - GET /users/{id}
+- Use versioning: /api/v1/
+- Always return consistent response format:
+  {
+    "success": true,
+    "data": {},
+    "error": null
+  }
+
+## 🧠 AI Behavior Rules
+- Do not generate placeholder logic.
+- If unsure, add TODO with explanation.
+- Prefer complete working code over partial snippets.
