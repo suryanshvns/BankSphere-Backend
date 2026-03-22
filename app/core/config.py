@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     # Comma-separated origins for browser clients (no spaces). Override with CORS_ORIGINS in production if needed.
     cors_origins: str = (
         "http://localhost:3001,http://localhost:5000,"
-        "https://bank-sphere-admin.vercel.app"
+        "https://bank-sphere-admin.vercel.app,"
         "https://bank-sphere.vercel.app"
     )
 
