@@ -61,18 +61,33 @@ Set these in the service → **Environment**:
 
 ---
 
-## 4. Start command (migrations + server)
+## 4. Start command (Render) + migrations from your laptop
 
-The **Dockerfile** only starts Uvicorn. On Render, override **Docker Command** (or **Start Command** depending on UI) so migrations run before the app:
+The **Dockerfile** runs **`python -m prisma generate`** at **container start** (not at image build), then starts Uvicorn. That avoids the common Render error: `prisma generate` failing during `docker build`.
+
+**Migrations** are meant to be applied **from your machine** against Neon (same `DATABASE_URL` as Render):
 
 ```bash
-prisma migrate deploy && sh -c 'uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}'
+cd backend
+chmod +x scripts/sync_neon_db.sh
+./scripts/sync_neon_db.sh
 ```
 
-- First deploy: this applies all migrations in `prisma/migrations/` to Neon.
-- Every deploy: runs pending migrations, then starts the API.
+This runs `prisma generate` and `prisma migrate deploy`. Your `.env` must define `DATABASE_URL`. If the URL contains `&`, wrap it in **single quotes** in `.env`.
 
-**Do not** run `scripts/seed.py` on every deploy unless you have made it fully idempotent; it can create duplicate users. Seed **once** if you want demo users (see below).
+Optional: check status only:
+
+```bash
+./scripts/sync_neon_db.sh status
+```
+
+If you prefer migrations on every deploy instead, set Render **Docker Command** / **Start Command** to:
+
+```bash
+sh -c 'python -m prisma generate && prisma migrate deploy && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}'
+```
+
+**Do not** run `scripts/seed.py` on every deploy unless it is idempotent. Seed **once** if you want demo users (see below).
 
 ---
 
