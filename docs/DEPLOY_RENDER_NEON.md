@@ -63,7 +63,7 @@ Set these in the service → **Environment**:
 
 ## 4. Start command (Render) + migrations from your laptop
 
-The **Dockerfile** runs **`python -m prisma generate`** at **container start** (not at image build), then starts Uvicorn. That avoids the common Render error: `prisma generate` failing during `docker build`.
+The **Dockerfile** installs **Node.js** from Debian (`nodejs` + `npm`) so Prisma’s Python client uses a **global** `node` and does **not** bootstrap Node via **nodeenv** (that step often exits with status 1 on Render). **`python -m prisma generate`** runs at **image build**; the container **start** command is only Uvicorn.
 
 **Migrations** are meant to be applied **from your machine** against Neon (same `DATABASE_URL` as Render):
 
@@ -84,8 +84,10 @@ Optional: check status only:
 If you prefer migrations on every deploy instead, set Render **Docker Command** / **Start Command** to:
 
 ```bash
-sh -c 'python -m prisma generate && prisma migrate deploy && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}'
+sh -c 'python -m prisma migrate deploy && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}'
 ```
+
+(`prisma generate` is already done in the image.)
 
 **Do not** run `scripts/seed.py` on every deploy unless it is idempotent. Seed **once** if you want demo users (see below).
 
